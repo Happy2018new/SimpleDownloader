@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	fileBuf  = bytes.NewBuffer(nil)
-	filePath string
+	downloadFinished bool          = false
+	fileBuf          *bytes.Buffer = bytes.NewBuffer(nil)
+	filePath         string
 )
 
 func handler(c *gin.Context) {
@@ -30,6 +31,9 @@ func handler(c *gin.Context) {
 		_ = websocketConn.Close()
 		if err = os.WriteFile(filePath, fileBuf.Bytes(), 0600); err != nil {
 			panic(fmt.Sprintf("Write file error: %v", err))
+		}
+		if downloadFinished {
+			os.Exit(0)
 		}
 	}()
 
@@ -72,6 +76,7 @@ func handler(c *gin.Context) {
 			}
 
 			if p.IsFinalChunk {
+				downloadFinished = true
 				conn.CloseConnection()
 				pterm.Success.Printfln("Success to download data to %s", filePath)
 				return
