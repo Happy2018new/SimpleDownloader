@@ -5,15 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"simple_downloader/protocol"
 	"simple_downloader/utils"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/pterm/pterm"
-	"github.com/sandertv/go-raknet"
 
-	customRaknet "simple_downloader/raknet"
+	customWebsocket "simple_downloader/websocket"
 )
 
 func main() {
@@ -42,58 +43,49 @@ func main() {
 		conn := ConnectToClient(clientAddress)
 
 		for {
-			var needBreak bool
-
-			for _, pk := range conn.ReadPackets() {
-				switch p := pk.(type) {
-				case *protocol.FileSeekRequest:
-					_ = file.Close()
-					file, _ = os.OpenFile(filePath, os.O_RDONLY, 0600)
-					_, err = file.Seek(2, int(p.Offset))
-					conn.WriteSinglePacket(&protocol.FileSeekResponse{
-						Success:   err == nil,
-						ErrorInfo: fmt.Sprintf("%v", err),
-					})
-				case *protocol.FileChunkRequest:
-					result := make([]byte, 524288)
-					validLength, err := file.Read(result)
-					isFinalChunk := errors.Is(err, io.EOF)
-					conn.WriteSinglePacket(&protocol.FileChunkResponse{
-						IsFinalChunk: isFinalChunk,
-						ChunkData:    result[:validLength],
-					})
-					if isFinalChunk {
-						conn.CloseConnection()
-						pterm.Success.Println("File download finished")
-						return
-					}
-				case *protocol.FileSizeRequest:
-					conn.WriteSinglePacket(&protocol.FileSizeResponse{
-						Size: fileSize,
-					})
-				}
-			}
-
-			select {
-			case <-conn.GetContext().Done():
-				needBreak = true
-			default:
-			}
-			if needBreak {
+			pk, connClosed := conn.ReadPacket()
+			if connClosed {
 				break
+			}
+			switch p := pk.(type) {
+			case *protocol.FileSeekRequest:
+				_ = file.Close()
+				file, _ = os.OpenFile(filePath, os.O_RDONLY, 0600)
+				_, err = file.Read(make([]byte, p.Offset))
+				conn.WritePacket(&protocol.FileSeekResponse{
+					Success:   err == nil,
+					ErrorInfo: fmt.Sprintf("%v", err),
+				})
+			case *protocol.FileChunkRequest:
+				result := make([]byte, 524288)
+				validLength, err := file.Read(result)
+				isFinalChunk := errors.Is(err, io.EOF)
+				conn.WritePacket(&protocol.FileChunkResponse{
+					IsFinalChunk: isFinalChunk,
+					ChunkData:    result[:validLength],
+				})
+				if isFinalChunk {
+					conn.CloseConnection()
+					pterm.Success.Println("File download finished")
+					return
+				}
+			case *protocol.FileSizeRequest:
+				conn.WritePacket(&protocol.FileSizeResponse{
+					Size: fileSize,
+				})
 			}
 		}
 	}
 }
 
 // ConnectToClient ..
-func ConnectToClient(address string) *customRaknet.Raknet {
-	var conn *raknet.Conn
+func ConnectToClient(address string) *customWebsocket.Raknet {
+	var conn *websocket.Conn
 	var err error
 
 	for {
 		ctx, cancelFunc := context.WithTimeout(context.Background(), time.Second*5)
-		conn, err = raknet.DialContext(ctx, address)
+		conn, _, err = websocket.DefaultDialer.DialContext(ctx, address, http.Header{})
 		if err != nil {
 			pterm.Warning.Printfln("Faild to connect to %s due to %v, retry.", address, err)
 			cancelFunc()
@@ -103,7 +95,7 @@ func ConnectToClient(address string) *customRaknet.Raknet {
 		break
 	}
 
-	wrapper := customRaknet.NewRaknet(customRaknet.DecodePacket, customRaknet.EncodePacket)
+	wrapper := customWebsocket.NewWebsocket(customWebsocket.DecodePacket, customWebsocket.EncodePacket)
 	wrapper.SetConnection(conn)
 	go wrapper.ProcessIncomingPackets()
 

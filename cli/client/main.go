@@ -1,79 +1,77 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"os"
 
 	"simple_downloader/protocol"
-	customRaknet "simple_downloader/raknet"
 	"simple_downloader/utils"
+	customWebsocket "simple_downloader/websocket"
 
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/pterm/pterm"
-	"github.com/sandertv/go-raknet"
 )
 
-func main() {
-	var currentOffset int
+var (
+	fileBuf  = bytes.NewBuffer(nil)
+	filePath string
+)
 
-	// Get file path
-	filePath := utils.ReadStringFromPanel("Type the file path: ")
-	file, err := os.OpenFile(filePath, os.O_CREATE, 0600)
+func handler(c *gin.Context) {
+	websocketConn, err := new(websocket.Upgrader).Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		panic(fmt.Sprintf("Open file %s error: %v", filePath, err))
+		log.Println("Upgrade error:", err)
+		return
 	}
-	defer file.Close()
-
-	listener, err := raknet.Listen(":19132")
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create listener due to %v", err))
-	}
-	pterm.Success.Println("Client is listen on 127.0.0.1:19132")
+	defer func() {
+		_ = websocketConn.Close()
+		if err = os.WriteFile(filePath, fileBuf.Bytes(), 0600); err != nil {
+			panic(fmt.Sprintf("Write file error: %v", err))
+		}
+	}()
 
 	for {
-		incomingConn, err := listener.Accept()
-		if err != nil {
-			pterm.Warning.Printfln("Listener accept connect failed: %v", err)
-			continue
-		}
-
-		conn := customRaknet.NewRaknet(customRaknet.DecodePacket, customRaknet.EncodePacket)
-		conn.SetConnection(incomingConn)
+		// Create wrapper
+		conn := customWebsocket.NewWebsocket(customWebsocket.DecodePacket, customWebsocket.EncodePacket)
+		conn.SetConnection(websocketConn)
 		go conn.ProcessIncomingPackets()
 
 		// Get file size
-		conn.WriteSinglePacket(&protocol.FileSizeRequest{})
-		pks := conn.ReadPackets()
-		if len(pks) != 1 {
-			continue
+		conn.WritePacket(&protocol.FileSizeRequest{})
+		pk, connClosed := conn.ReadPacket()
+		if connClosed {
+			return
 		}
-		fileSize := pks[0].(*protocol.FileSizeResponse).Size
+		fileSize := pk.(*protocol.FileSizeResponse).Size
 
 		// File seek
-		conn.WriteSinglePacket(&protocol.FileSeekRequest{Offset: int64(currentOffset)})
-		pks = conn.ReadPackets()
-		if len(pks) != 1 {
-			continue
+		conn.WritePacket(&protocol.FileSeekRequest{Offset: int64(fileBuf.Len())})
+		pk, connClosed = conn.ReadPacket()
+		if connClosed {
+			return
 		}
-		if seekResp := pks[0].(*protocol.FileSeekResponse); !seekResp.Success {
+		if seekResp := pk.(*protocol.FileSeekResponse); !seekResp.Success {
 			panic(fmt.Sprintf("File seek error: %v", seekResp.ErrorInfo))
 		}
 
 		for {
-			conn.WriteSinglePacket(&protocol.FileChunkRequest{})
+			conn.WritePacket(&protocol.FileChunkRequest{})
 
-			pks = conn.ReadPackets()
-			if len(pks) != 1 {
-				break
+			pk, connClosed := conn.ReadPacket()
+			if connClosed {
+				return
 			}
-			pk := pks[0].(*protocol.FileChunkResponse)
+			p := pk.(*protocol.FileChunkResponse)
 
-			_, err = file.Write(pk.ChunkData)
+			_, err := fileBuf.Write(p.ChunkData)
 			if err != nil {
-				panic(fmt.Sprintf("Write file error: %v", err))
+				panic(fmt.Sprintf("Write buf error: %v", err))
 			}
-			currentOffset += len(pk.ChunkData)
 
-			if pk.IsFinalChunk {
+			if p.IsFinalChunk {
 				conn.CloseConnection()
 				pterm.Success.Printfln("Success to download data to %s", filePath)
 				return
@@ -81,10 +79,19 @@ func main() {
 
 			resultStr := fmt.Sprintf(
 				"Receive data: %d/%d (%v",
-				currentOffset, fileSize,
-				float64(currentOffset)/float64(fileSize+1)*100,
+				fileBuf.Len(), fileSize,
+				float64(fileBuf.Len())/float64(fileSize+1)*100,
 			)
 			pterm.Info.Println(resultStr + "%)")
 		}
 	}
+}
+
+func main() {
+	filePath = utils.ReadStringFromPanel("Type the file path: ")
+	_ = os.Remove(filePath)
+
+	router := gin.Default()
+	router.Any("/", handler)
+	router.Run(":2018")
 }
