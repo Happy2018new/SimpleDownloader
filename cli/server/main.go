@@ -55,7 +55,7 @@ func main() {
 						ErrorInfo: fmt.Sprintf("%v", err),
 					})
 				case *protocol.FileChunkRequest:
-					result := make([]byte, 4096)
+					result := make([]byte, 51200)
 					validLength, err := file.Read(result)
 					isFinalChunk := errors.Is(err, io.EOF)
 					conn.WriteSinglePacket(&protocol.FileChunkResponse{
