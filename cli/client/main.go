@@ -79,7 +79,12 @@ func main() {
 				return
 			}
 
-			pterm.Info.Printfln("Receive data: %d/%d", currentOffset, fileSize)
+			resultStr := fmt.Sprintf(
+				"Receive data: %d/%d (%v",
+				currentOffset, fileSize,
+				float64(currentOffset)/float64(fileSize+1)*100,
+			)
+			pterm.Info.Println(resultStr + "%)")
 		}
 	}
 }
