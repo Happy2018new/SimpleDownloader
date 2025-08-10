@@ -13,9 +13,9 @@ import (
 func NewWebsocket(
 	decodePacket func(buf []byte) (pk Packet),
 	encodePacket func(pk Packet) (buf []byte),
-) *Raknet {
+) *Websocket {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Raknet{
+	return &Websocket{
 		context:      ctx,
 		cancel:       cancel,
 		decodePacket: decodePacket,
@@ -24,31 +24,31 @@ func NewWebsocket(
 }
 
 // 将底层 Raknet 连接设置为 connection
-func (r *Raknet) SetConnection(connection *websocket.Conn) {
-	r.connection = connection
-	r.packet = make(chan Packet, 512)
+func (w *Websocket) SetConnection(connection *websocket.Conn) {
+	w.connection = connection
+	w.packet = make(chan Packet, 512)
 }
 
 // 关闭已建立的 Raknet 底层连接
-func (r *Raknet) CloseConnection() {
-	r.closedLock.Lock()
-	defer r.closedLock.Unlock()
+func (w *Websocket) CloseConnection() {
+	w.closedLock.Lock()
+	defer w.closedLock.Unlock()
 
-	r.cancel()
+	w.cancel()
 
-	if r.connection != nil {
-		r.connection.Close()
+	if w.connection != nil {
+		w.connection.Close()
 	}
 
-	if !r.closed && r.packet != nil {
-		close(r.packet)
-		r.closed = true
+	if !w.closed && w.packet != nil {
+		close(w.packet)
+		w.closed = true
 	}
 }
 
 // 获取当前的上下文
-func (r *Raknet) GetContext() context.Context {
-	return r.context
+func (w *Websocket) GetContext() context.Context {
+	return w.context
 }
 
 /*
@@ -63,7 +63,7 @@ func (r *Raknet) GetContext() context.Context {
 
 另，此函数应当只被调用一次
 */
-func (r *Raknet) ProcessIncomingPackets() {
+func (w *Websocket) ProcessIncomingPackets() {
 	// 确保该函数不会返回恐慌
 	defer func() {
 		recover()
@@ -71,21 +71,21 @@ func (r *Raknet) ProcessIncomingPackets() {
 	// 不断处理到来的一个或多个数据包
 	for {
 		// 从底层 Raknet 连接读取数据包
-		_, message, err := r.connection.ReadMessage()
+		_, message, err := w.connection.ReadMessage()
 		// 从底层 Raknet 连接读取数据包
 		if err != nil {
 			// 此时从底层 Raknet 连接读取数据包遭遇了错误，
 			// 因此我们认为连接已被关闭
-			r.CloseConnection()
+			w.CloseConnection()
 			return
 		}
 		// 解码并提交数据包
 		select {
-		case <-r.context.Done():
-			r.CloseConnection()
+		case <-w.context.Done():
+			w.CloseConnection()
 			return
 		default:
-			r.packet <- r.decodePacket(message)
+			w.packet <- w.decodePacket(message)
 		}
 	}
 }
@@ -93,10 +93,10 @@ func (r *Raknet) ProcessIncomingPackets() {
 // 从已读取且已解码的数据包池中读取单个数据包。
 // 当数据包池没有数据包时，将会阻塞，
 // 直到新的已处理数据包抵达
-func (r *Raknet) ReadPacket() (pk Packet, connClosed bool) {
-	pk = <-r.packet
+func (w *Websocket) ReadPacket() (pk Packet, connClosed bool) {
+	pk = <-w.packet
 	select {
-	case <-r.context.Done():
+	case <-w.context.Done():
 		connClosed = true
 	default:
 	}
@@ -104,12 +104,12 @@ func (r *Raknet) ReadPacket() (pk Packet, connClosed bool) {
 }
 
 // 向底层 Raknet 连接写单个数据包 pk
-func (r *Raknet) WritePacket(pk Packet) {
+func (w *Websocket) WritePacket(pk Packet) {
 	// 将数据包写入底层 Raknet 连接
-	err := r.connection.WriteMessage(websocket.BinaryMessage, r.encodePacket(pk))
+	err := w.connection.WriteMessage(websocket.BinaryMessage, w.encodePacket(pk))
 	// 此时向底层 Raknet 连接写入数据包遭遇了错误，
 	// 因此我们认为连接已被关闭
 	if err != nil {
-		r.CloseConnection()
+		w.CloseConnection()
 	}
 }

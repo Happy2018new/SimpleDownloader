@@ -11,7 +11,7 @@ import (
 // 描述一个简单的，
 // 但不基于 Minecraft
 // 通信协议的基本 Raknet 连接实例
-type Raknet struct {
+type Websocket struct {
 	connection *websocket.Conn
 
 	context context.Context

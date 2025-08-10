@@ -79,7 +79,7 @@ func main() {
 }
 
 // ConnectToClient ..
-func ConnectToClient(address string) *customWebsocket.Raknet {
+func ConnectToClient(address string) *customWebsocket.Websocket {
 	var conn *websocket.Conn
 	var err error
 
