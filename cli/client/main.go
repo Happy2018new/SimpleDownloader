@@ -57,8 +57,8 @@ func handler(c *gin.Context) {
 		if connClosed {
 			return
 		}
-		if seekResp := pk.(*protocol.FileSeekResponse); !seekResp.Success {
-			panic(fmt.Sprintf("File seek error: %v", seekResp.ErrorInfo))
+		if _, ok := pk.(*protocol.FileSeekResponse); !ok {
+			panic(fmt.Sprintf("File seek error: Returned packet is not file seek response; pk = %#v", pk))
 		}
 
 		for {

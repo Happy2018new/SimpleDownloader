@@ -16,16 +16,10 @@ func (f *FileSeekRequest) Marshal(io protocol.IO) {
 }
 
 // FileSeekResponse ..
-type FileSeekResponse struct {
-	Success   bool
-	ErrorInfo string
-}
+type FileSeekResponse struct{}
 
 func (*FileSeekResponse) ID() uint32 {
 	return 2
 }
 
-func (f *FileSeekResponse) Marshal(io protocol.IO) {
-	io.Bool(&f.Success)
-	io.String(&f.ErrorInfo)
-}
+func (f *FileSeekResponse) Marshal(io protocol.IO) {}

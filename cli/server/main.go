@@ -18,6 +18,8 @@ import (
 )
 
 func main() {
+	var currentOffset int64
+
 	// Get file path
 	filePath := utils.ReadStringFromPanel("Type the file path: ")
 	file, err := os.OpenFile(filePath, os.O_RDONLY, 0600)
@@ -49,21 +51,21 @@ func main() {
 			}
 			switch p := pk.(type) {
 			case *protocol.FileSeekRequest:
-				_ = file.Close()
-				file, _ = os.OpenFile(filePath, os.O_RDONLY, 0600)
-				_, err = file.Read(make([]byte, p.Offset))
-				conn.WritePacket(&protocol.FileSeekResponse{
-					Success:   err == nil,
-					ErrorInfo: fmt.Sprintf("%v", err),
-				})
+				currentOffset = p.Offset
+				conn.WritePacket(&protocol.FileSeekResponse{})
 			case *protocol.FileChunkRequest:
-				result := make([]byte, 20971520)
-				validLength, err := file.Read(result)
+				// Read data (3MB per request)
+				result := make([]byte, 3145728)
+				validLength, err := file.ReadAt(result, currentOffset)
+				// Change pointer
 				isFinalChunk := errors.Is(err, io.EOF)
+				currentOffset += int64(validLength)
+				// Write packet
 				conn.WritePacket(&protocol.FileChunkResponse{
 					IsFinalChunk: isFinalChunk,
 					ChunkData:    result[:validLength],
 				})
+				// If EOF, then return
 				if isFinalChunk {
 					conn.CloseConnection()
 					pterm.Success.Println("File download finished")
