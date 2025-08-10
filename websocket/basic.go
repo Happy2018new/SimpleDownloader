@@ -1,4 +1,4 @@
-package raknet
+package websocket
 
 import (
 	"context"
@@ -23,13 +23,13 @@ func NewWebsocket(
 	}
 }
 
-// 将底层 Raknet 连接设置为 connection
+// 将底层 Websocket 连接设置为 connection
 func (w *Websocket) SetConnection(connection *websocket.Conn) {
 	w.connection = connection
 	w.packet = make(chan Packet, 512)
 }
 
-// 关闭已建立的 Raknet 底层连接
+// 关闭已建立的 Websocket 底层连接
 func (w *Websocket) CloseConnection() {
 	w.closedLock.Lock()
 	defer w.closedLock.Unlock()
@@ -52,8 +52,8 @@ func (w *Websocket) GetContext() context.Context {
 }
 
 /*
-从底层 Raknet 不断地读取多个数据包，
-直到底层 Raknet 连接被关闭。
+从底层 Websocket 不断地读取多个数据包，
+直到底层 Websocket 连接被关闭。
 
 在大多数情况下，由于我们只需按原样传递数据包，
 因此，我们只解码了一部分必须的数据包。
@@ -70,11 +70,11 @@ func (w *Websocket) ProcessIncomingPackets() {
 	}()
 	// 不断处理到来的一个或多个数据包
 	for {
-		// 从底层 Raknet 连接读取数据包
+		// 从底层 Websocket 连接读取数据包
 		_, message, err := w.connection.ReadMessage()
-		// 从底层 Raknet 连接读取数据包
+		// 从底层 Websocket 连接读取数据包
 		if err != nil {
-			// 此时从底层 Raknet 连接读取数据包遭遇了错误，
+			// 此时从底层 Websocket 连接读取数据包遭遇了错误，
 			// 因此我们认为连接已被关闭
 			w.CloseConnection()
 			return
@@ -103,11 +103,11 @@ func (w *Websocket) ReadPacket() (pk Packet, connClosed bool) {
 	return
 }
 
-// 向底层 Raknet 连接写单个数据包 pk
+// 向底层 Websocket 连接写单个数据包 pk
 func (w *Websocket) WritePacket(pk Packet) {
-	// 将数据包写入底层 Raknet 连接
+	// 将数据包写入底层 Websocket 连接
 	err := w.connection.WriteMessage(websocket.BinaryMessage, w.encodePacket(pk))
-	// 此时向底层 Raknet 连接写入数据包遭遇了错误，
+	// 此时向底层 Websocket 连接写入数据包遭遇了错误，
 	// 因此我们认为连接已被关闭
 	if err != nil {
 		w.CloseConnection()

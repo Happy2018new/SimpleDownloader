@@ -1,4 +1,4 @@
-package raknet
+package websocket
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 // 描述一个简单的，
 // 但不基于 Minecraft
-// 通信协议的基本 Raknet 连接实例
+// 通信协议的基本 Websocket 连接实例
 type Websocket struct {
 	connection *websocket.Conn
 
@@ -26,5 +26,5 @@ type Websocket struct {
 	packet chan (Packet)
 }
 
-// 描述 Raknet 数据包
+// 描述 Websocket 数据包
 type Packet packet.Packet

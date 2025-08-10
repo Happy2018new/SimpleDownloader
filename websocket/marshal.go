@@ -1,4 +1,4 @@
-package raknet
+package websocket
 
 import (
 	"bytes"
